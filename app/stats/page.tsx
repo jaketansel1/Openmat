@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 type Session = {
   id: number;
-  date: string;
+  date: string; // "YYYY-MM-DD" from Supabase
   type: string;
   duration_minutes: number;
 };
@@ -14,6 +14,25 @@ function minutesToHoursAndMinutes(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return { hours, minutes };
+}
+
+// Helper to get Monday–Sunday range for "this week"
+function getWeekRange() {
+  const now = new Date();
+
+  // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const weekday = now.getDay();
+  const diffToMonday = (weekday + 6) % 7; // days since Monday
+
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - diffToMonday); // move back to Monday
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6); // Sunday
+  end.setHours(23, 59, 59, 999);
+
+  return { startOfWeek: start, endOfWeek: end };
 }
 
 export default function StatsPage() {
@@ -26,8 +45,11 @@ export default function StatsPage() {
         .from('sessions')
         .select('*');
 
-      if (error) console.error(error);
-      else setSessions(data as Session[]);
+      if (error) {
+        console.error(error);
+      } else {
+        setSessions(data as Session[]);
+      }
 
       setLoading(false);
     }
@@ -44,15 +66,14 @@ export default function StatsPage() {
 
   // ---- CALCULATIONS ----
 
-  // This week (Mon–Sun)
-  const now = new Date();
-  const day = now.getDay(); // 0–6
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((day + 6) % 7)); // move to Monday
+  // This week (Mon–Sun) using the `date` column
+  const { startOfWeek, endOfWeek } = getWeekRange();
 
   const thisWeekSessions = sessions.filter((s) => {
-    const d = new Date(s.date);
-    return d >= monday;
+    // Supabase `date` column comes as "YYYY-MM-DD"
+    // Force it to local midnight so comparisons are consistent
+    const d = new Date(`${s.date}T00:00:00`);
+    return d >= startOfWeek && d <= endOfWeek;
   });
 
   const thisWeekMinutes = thisWeekSessions.reduce(
@@ -81,7 +102,6 @@ export default function StatsPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex justify-center px-4 py-8">
       <div className="w-full max-w-md space-y-6">
-
         <h1 className="text-3xl font-semibold">Session Stats</h1>
 
         {/* This Week */}
